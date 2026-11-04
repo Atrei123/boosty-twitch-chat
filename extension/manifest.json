@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Boosty Chat — Twitch-style",
+  "version": "1.0.0",
+  "description": "Чат Boosty в стиле Twitch и передача сообщений в OBS-оверлей.",
+  "content_scripts": [
+    {
+      "matches": ["https://boosty.to/*"],
+      "js": ["boosty-twitch-chat.user.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "background": { "service_worker": "background.js" },
+  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"]
+}

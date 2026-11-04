@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Mock Boosty only-chat</title>
+<style>
+  /* Грубая имитация вёрстки Boosty: светлый фон, шапка, список и поле ввода. */
+  body { margin: 0; font-family: Arial, sans-serif; background: #f4f4f4; }
+  header { height: 56px; background: #fff; border-bottom: 1px solid #ddd; display: flex; align-items: center; padding: 0 16px; }
+  .ChatRoot { position: absolute; top: 57px; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; background: #fff; }
+  .ChatBoxBase-scss--module_list_x { flex: 1; overflow-y: auto; padding: 8px; }
+  .ChatMessage-scss--module_root_T1qVW { padding: 6px 8px; display: flex; gap: 6px; font-size: 14px; }
+  .ChatMessage-scss--module_publishTime_cvz-1 { color: #999; }
+  .ChatMessage-scss--module_author_3jNAZ { display: inline-flex; gap: 4px; align-items: center; }
+  .ChatMessage-scss--module_tooltipHidden_UTMEu { display: none; }
+  #chat-pub-root { height: 90px; border-top: 1px solid #ddd; padding: 10px; }
+  #chat-pub-root textarea { width: 100%; height: 60px; }
+</style>
+</head>
+<body>
+<header>boosty · hellyeahplay · only-chat (mock)</header>
+<div class="ChatRoot" data-test-id="CHAT:root">
+  <div class="ChatBoxBase-scss--module_list_x" data-test-id="CHAT:messages" id="list">
+    <div class="ChatSystemMessage-scss--module_root_Fjn2U ChatBoxBase-scss--module_infoMessage_8xB2v">Добро пожаловать в чат!</div>
+  </div>
+  <div id="chat-pub-root"><textarea placeholder="Написать сообщение"></textarea></div>
+</div>
+<script>
+  const list = document.getElementById('list');
+  const EMOJI = 'https://static.boosty.to/assets/images/small.heart.png';
+  const roleIcon = { streamer: '#icon-star-4f3444cf', moderator: '#icon-sword-b9560ef8' };
+  window.addMsg = ({ name, color, role, time = '17:02', html, reply, mention }) => {
+    const root = document.createElement('div');
+    root.className = 'ChatMessage-scss--module_root_T1qVW ChatBoxBase-scss--module_message_lWMhc' + (mention ? ' ChatMessage-scss--module_hasRootMention_vKvAQ' : '');
+    root.setAttribute('data-test-id', 'CHATMESSAGE:root');
+    root.innerHTML = `
+      <div class="ChatMessage-scss--module_publishTime_cvz-1">${time}</div>
+      <div class="ChatMessage-scss--module_message_U9oXB">
+        ${reply ? `<div class="ChatMessage_replyContainer__q" data-test-id="CHATMESSAGE:reply"><span>${reply[0]}</span><span>${reply[1]}</span></div>` : ''}
+        <div class="ChatMessage-scss--module_author_3jNAZ">
+          <div class="Avatar-scss--module_root_0kK-H ChatMessage-scss--module_avatar_HwV5v" style="background-image: url(&quot;https://images.boosty.to/user/1/avatar.png&quot;); width:16px;height:16px"></div>
+          ${role ? `<div class="TooltipFloating-scss--module_root_sMYJO ChatMessage-scss--module_badgeIconContainer_ZZ-7j" data-test-id="TOOLTIP:ROOT"><div tabindex="0"><span class="Icon-scss--module_block_ecqog"><svg class="Icon-scss--module_svg_SRc3X"><use xlink:href="${roleIcon[role]}"></use></svg></span></div></div>` : ''}
+          <span class="ChatMessage-scss--module_name_dxAEt" data-test-id="CHATMESSAGE:author" ${color ? `style="color: ${color};"` : ''}>${name}:</span>
+        </div>
+        <span class="ChatMessage-scss--module_text_qBUce" data-test-id="CHATMESSAGE:message">
+          <span class="BlockRenderer-scss--module_markup_Tk8dH BlockRenderer-scss--module_markupBlock_zzCfT">${html}</span>
+          <div class="ChatMessage-scss--module_tooltip_Fu2uP ChatMessage-scss--module_tooltipHidden_UTMEu">:heart:</div>
+        </span>
+      </div>
+      <div class="ChatMessage-scss--module_buttons_5R3aI"><button class="ChatMessage-scss--module_button_rgeLj" type="button"><svg><use xlink:href="#icon-trash"></use></svg></button></div>`;
+    list.append(root);
+    list.scrollTop = list.scrollHeight;
+    return root;
+  };
+  window.EMOJI = EMOJI;
+  // Пара сообщений «из истории» до загрузки скрипта.
+  addMsg({ name: 'Зритель_Тест', color: 'rgb(139, 63, 253)', html: 'Тестовое сообщение из реального DOM Boosty', time: '17:00' });
+  addMsg({ name: 'Тёмный_Ник', color: 'rgb(0, 87, 159)', html: 'у меня тёмно-синий ник', time: '17:01' });
+</script>
+</body>
+</html>

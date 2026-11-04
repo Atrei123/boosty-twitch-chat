@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boosty Chat Overlay — настройка</title>
+<style>
+  /* Без color-scheme: иначе Chromium рисует под прозрачным iframe белую подложку. */
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0e0e10; color: #efeff1; font: 14px/1.5 Inter, "Segoe UI", Arial, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: #adadb8; margin: 0 0 20px; }
+  .grid { display: grid; grid-template-columns: minmax(260px, 340px) 1fr; gap: 20px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: #18181b; border: 1px solid #2f2f35; border-radius: 10px; padding: 16px; }
+  label { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
+  label span { color: #dedee3; }
+  input[type=number], input[type=text], select { width: 130px; background: #0e0e10; color: #efeff1;
+    border: 1px solid #3d3d40; border-radius: 6px; padding: 5px 8px; font: inherit; }
+  input[type=text] { width: 160px; }
+  label.range { flex-wrap: wrap; }
+  label.range input { width: 100%; accent-color: #9147ff; }
+  label.range input:disabled { opacity: .35; }
+  output { color: #bf94ff; font-variant-numeric: tabular-nums; margin-left: 4px; }
+  .status { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 8px 10px; border-radius: 8px; background: #0e0e10; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #adadb8; flex: none; }
+  .dot.ok { background: #00f593; } .dot.bad { background: #eb0400; }
+  .url { display: flex; gap: 8px; margin: 12px 0; }
+  .url input { flex: 1; width: auto; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  button { background: #9147ff; color: #fff; border: 0; border-radius: 6px; padding: 7px 12px; font: 600 13px/1.2 inherit; cursor: pointer; }
+  button.secondary { background: #3a3a3d; }
+  button:hover { filter: brightness(1.12); }
+  .preview { height: 460px; border-radius: 8px; overflow: hidden; border: 1px solid #2f2f35;
+    background: repeating-conic-gradient(#26262c 0% 25%, #1d1d22 0% 50%) 0 0 / 24px 24px; }
+  .preview iframe { width: 100%; height: 100%; border: 0; background: transparent; }
+  ol { padding-left: 20px; margin: 8px 0 0; color: #dedee3; }
+  code { background: #0e0e10; padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Чат Boosty для OBS</h1>
+  <p class="sub">Настройте вид, скопируйте ссылку и добавьте её в OBS как «Браузер» (Browser Source).</p>
+
+  <div class="grid">
+    <div class="card">
+      <div class="status"><span class="dot" id="dot"></span><span id="statusText">Проверяем…</span></div>
+      <form id="form">
+        <label><span>Размер шрифта, px</span><input type="number" name="font" value="18" min="10" max="60"></label>
+        <label><span>Фон</span>
+          <select name="bg">
+            <option value="transparent">прозрачный</option>
+            <option value="dark">тёмный (как Twitch)</option>
+            <option value="00ff00">зелёный (хромакей)</option>
+          </select></label>
+        <label class="range"><span>Непрозрачность фона <output data-for="bgalpha"></output></span><input type="range" name="bgalpha" value="100" min="0" max="100" step="5"></label>
+        <label class="range"><span>Подложка под сообщениями <output data-for="plate"></output></span><input type="range" name="plate" value="0" min="0" max="100" step="5"></label>
+        <label class="range"><span>Непрозрачность текста <output data-for="alpha"></output></span><input type="range" name="alpha" value="100" min="5" max="100" step="5"></label>
+        <label><span>Скрывать через, сек (0 — нет)</span><input type="number" name="fade" value="0" min="0" max="600"></label>
+        <label><span>Сообщений на экране</span><input type="number" name="max" value="40" min="1" max="200"></label>
+        <label><span>Время сообщений</span><input type="checkbox" name="time"></label>
+        <label><span>Аватарки</span><input type="checkbox" name="avatars"></label>
+        <label><span>Значки стримера и модераторов</span><input type="checkbox" name="badges" checked></label>
+        <label><span>Обводка текста</span><input type="checkbox" name="shadow" checked></label>
+        <label><span>Сообщения до запуска оверлея</span><input type="checkbox" name="history" checked></label>
+        <label><span>Команды «!…»</span><input type="checkbox" name="commands" checked></label>
+        <label><span>Скрыть ники (через запятую)</span><input type="text" name="hide" placeholder="bot1, bot2"></label>
+      </form>
+    </div>
+
+    <div>
+      <div class="card">
+        <strong>Ссылка для OBS</strong>
+        <div class="url"><input id="url" type="text" readonly><button id="copy" type="button">Копировать</button></div>
+        <div class="preview"><iframe id="preview" title="Превью оверлея"></iframe></div>
+        <div style="display:flex; gap:8px; margin-top:10px">
+          <button class="secondary" id="test" type="button">Отправить тестовое сообщение</button>
+          <button class="secondary" id="clear" type="button">Очистить</button>
+        </div>
+      </div>
+      <div class="card" style="margin-top:20px">
+        <strong>Как подключить</strong>
+        <ol>
+          <li>В OBS: «Источники» → «+» → «Браузер».</li>
+          <li>Вставьте ссылку выше в поле URL, ширина/высота, например, <code>400</code> × <code>600</code>.</li>
+          <li>Откройте чат Boosty в браузере с расширением, например <code>boosty.to/&lt;канал&gt;/streams/only-chat</code>. Вкладку не закрывайте, её можно свернуть.</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</main>
+<script>
+  const form = document.getElementById('form');
+  const urlInput = document.getElementById('url');
+  const preview = document.getElementById('preview');
+  const defaults = { font: '18', bg: 'transparent', bgalpha: '100', plate: '0', alpha: '100', fade: '0', max: '40', time: false, avatars: false,
+    badges: true, shadow: true, history: true, commands: true, hide: '' };
+
+  function buildQuery(extra = {}) {
+    const q = new URLSearchParams();
+    for (const [k, d] of Object.entries(defaults)) {
+      const input = form.elements[k];
+      const v = input.type === 'checkbox' ? input.checked : input.value.trim();
+      if (v !== d) q.set(k, typeof v === 'boolean' ? (v ? '1' : '0') : v);
+    }
+    for (const [k, v] of Object.entries(extra)) q.set(k, v);
+    const s = q.toString();
+    return s ? `?${s}` : '';
+  }
+
+  let previewTimer;
+  function update() {
+    // Ползунок фона имеет смысл только для непрозрачного фона.
+    if (form.elements.bg.value === 'transparent' && document.activeElement === form.elements.bgalpha) form.elements.bg.value = 'dark';
+    for (const out of form.querySelectorAll('output')) out.textContent = `${form.elements[out.dataset.for].value}%`;
+    urlInput.value = `${location.origin}/overlay${buildQuery()}`;
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(() => { preview.src = `/overlay${buildQuery({ status: '1' })}`; }, 250);
+  }
+  form.addEventListener('input', update);
+  update();
+
+  document.getElementById('copy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(urlInput.value); } catch { urlInput.select(); document.execCommand('copy'); }
+    const b = document.getElementById('copy'); b.textContent = 'Скопировано'; setTimeout(() => (b.textContent = 'Копировать'), 1500);
+  });
+
+  const samples = [
+    ['Зритель_42', 'rgb(89, 168, 64)', '', 'Привет, чат! Как слышно?'],
+    ['Модератор', 'rgb(0, 169, 255)', 'moderator', 'Не спамим, соблюдаем правила 🙂'],
+    ['Стример', 'rgb(229, 66, 255)', 'streamer', 'Всем привет, начинаем!'],
+    ['ochen_dlinny_nickname', 'rgb(248, 179, 1)', '', 'Длинное сообщение, чтобы проверить, как оверлей переносит строки и не вылезает за край источника в OBS.'],
+  ];
+  let n = 0;
+  document.getElementById('test').addEventListener('click', () => {
+    const [name, color, role, text] = samples[n++ % samples.length];
+    const now = new Date();
+    push({ type: 'message', msg: { id: `test-${Date.now()}`, kind: 'chat', name, color, role,
+      time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+      parts: [{ type: 'text', text }], ts: Date.now() } });
+  });
+  document.getElementById('clear').addEventListener('click', () => push({ type: 'clear' }));
+
+  function push(ev) {
+    return fetch('/push', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: 'test', events: [ev] }) });
+  }
+
+  async function poll() {
+    const dot = document.getElementById('dot');
+    const text = document.getElementById('statusText');
+    try {
+      const s = await (await fetch('/status', { cache: 'no-store' })).json();
+      if (s.boostyConnected && s.source !== 'test') {
+        dot.className = 'dot ok';
+        text.textContent = `Чат Boosty подключён (${s.source}). Оверлеев открыто: ${s.overlays}`;
+      } else {
+        dot.className = 'dot';
+        text.textContent = 'Relay работает. Ждём страницу чата Boosty с расширением…';
+      }
+    } catch {
+      dot.className = 'dot bad';
+      text.textContent = 'Relay не отвечает — запустите start.bat / start.sh';
+    }
+  }
+  poll();
+  setInterval(poll, 2000);
+</script>
+</body>
+</html>
