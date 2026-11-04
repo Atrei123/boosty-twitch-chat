@@ -205,14 +205,37 @@
   const MAX_MESSAGES = 500;
   const sessionPrefix = Math.random().toString(36).slice(2, 8);
   let seq = 0;
-  const nodeInfo = new WeakMap(); // DOM-узел Boosty -> { id, sig, deleted }
+  const nodeInfo = new WeakMap(); // DOM-узел Boosty -> { id, sig }
   const messages = [];            // упорядоченный список наших записей
+  const sigIds = new Map();       // содержимое сообщения -> id наших записей с таким содержимым
   const listeners = [];
   const emit = (ev) => listeners.forEach((fn) => fn(ev));
+  const indexOf = (id) => messages.findIndex((r) => r.id === id);
+
+  /*
+   * Когда чат Boosty подвисает и переподключается, он заново рисует весь список:
+   * DOM-узлы новые, а сообщения те же. Поэтому узнаём сообщение не только по узлу,
+   * но и по содержимому (ник, время, текст): узел без пометки сопоставляем с уже
+   * известной записью с тем же содержимым, которая стоит в ленте после предыдущего
+   * сообщения и ещё не занята другим узлом. Так перерисовка не даёт повторов,
+   * а настоящий повтор («+» от того же человека в ту же минуту) проходит как новое.
+   */
+  function findKnown(sig, prevId, claimed) {
+    const ids = sigIds.get(sig);
+    if (!ids) return null;
+    const prevIndex = prevId ? indexOf(prevId) : -1;
+    for (const id of ids) {
+      if (claimed.has(id)) continue;
+      const i = indexOf(id);
+      if (i > prevIndex) return messages[i];
+    }
+    return null;
+  }
 
   function scan(isInitial) {
     const nodes = document.querySelectorAll(ANY_MESSAGE);
     let prevId = null;
+    const claimed = new Set(); // записи, уже сопоставленные с узлами в этом проходе
     for (const node of nodes) {
       if (uiHost && uiHost.contains(node)) continue;
       const known = nodeInfo.get(node);
@@ -220,29 +243,38 @@
       if (msg.kind === 'chat' && !msg.name && !msg.parts.length) continue; // ещё не дорендерилось
       const sig = signature(msg);
 
-      if (known && known.sig === sig) {
-        if (known.deleted !== msg.deleted) {
-          known.deleted = msg.deleted;
-          const rec = messages.find((r) => r.id === known.id);
-          if (rec) rec.deleted = msg.deleted;
-          emit({ type: msg.deleted ? 'delete' : 'update', id: known.id, msg: rec });
+      let rec = null;
+      if (known && known.sig === sig && !claimed.has(known.id)) rec = messages.find((r) => r.id === known.id) || null;
+      if (!rec) rec = findKnown(sig, prevId, claimed);
+      if (rec) {
+        nodeInfo.set(node, { id: rec.id, sig });
+        claimed.add(rec.id);
+        if (Boolean(rec.deleted) !== msg.deleted) {
+          rec.deleted = msg.deleted;
+          emit({ type: msg.deleted ? 'delete' : 'update', id: rec.id, msg: rec });
         }
-        prevId = known.id;
+        prevId = rec.id;
         continue;
       }
 
-      // Новый узел (или React переиспользовал узел под другое сообщение).
+      // Новое сообщение.
       const id = `${sessionPrefix}-${++seq}`;
-      nodeInfo.set(node, { id, sig, deleted: msg.deleted });
+      nodeInfo.set(node, { id, sig });
+      claimed.add(id);
+      if (!sigIds.has(sig)) sigIds.set(sig, []);
+      sigIds.get(sig).push(id);
       const prevIndex = prevId ? messages.findIndex((r) => r.id === prevId) : -1;
       const atEnd = prevIndex === messages.length - 1;
-      const rec = { id, ...msg, ts: Date.now(), history: Boolean(isInitial || !atEnd) };
-      messages.splice(prevIndex + 1, 0, rec);
-      emit({ type: 'message', msg: rec, afterId: prevId });
+      const fresh = { id, ...msg, ts: Date.now(), history: Boolean(isInitial || !atEnd) };
+      messages.splice(prevIndex + 1, 0, fresh);
+      emit({ type: 'message', msg: fresh, afterId: prevId });
       prevId = id;
     }
     while (messages.length > MAX_MESSAGES) {
       const removed = messages.shift();
+      const sig = signature(removed);
+      const ids = (sigIds.get(sig) || []).filter((x) => x !== removed.id);
+      if (ids.length) sigIds.set(sig, ids); else sigIds.delete(sig);
       emit({ type: 'evict', id: removed.id });
     }
   }

@@ -71,10 +71,20 @@ function isValidMessage(m) {
   return m && typeof m === 'object' && typeof m.id === 'string' && m.id.length < 100 && Array.isArray(m.parts || []);
 }
 
+function contentKey(m) {
+  return JSON.stringify([m.kind, m.name, m.time, m.parts]);
+}
+
 function applyEvent(ev) {
   if (!ev || typeof ev !== 'object') return;
   if (ev.type === 'message' && isValidMessage(ev.msg)) {
     if (recent.some((m) => m.id === ev.msg.id)) return;
+    // Страница Boosty перезагрузилась — расширение заново шлёт всё, что видит, как историю.
+    // То, что уже есть в оверлее, повторно не показываем.
+    if (ev.msg.history) {
+      const key = contentKey(ev.msg);
+      if (recent.some((m) => contentKey(m) === key)) return;
+    }
     recent.push(ev.msg);
     if (recent.length > KEEP) recent.splice(0, recent.length - KEEP);
     broadcast({ type: 'message', msg: ev.msg });
