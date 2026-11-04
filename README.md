@@ -1,4 +1,4 @@
-# Boosty Chat — Twitch-style
+# Boosty Chat - Twitch-style
 
 Делает чат Boosty похожим на чат Twitch и выводит его в OBS как обычный оверлей.
 
