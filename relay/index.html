@@ -41,7 +41,7 @@
 <body>
 <main>
   <h1>Чат Boosty для OBS</h1>
-  <p class="sub">Настройте вид, скопируйте ссылку и добавьте её в OBS как «Браузер» (Browser Source).</p>
+  <p class="sub">Настройте вид, скопируйте ссылку и добавьте её в OBS как «Браузер» (Browser Source). Настройки сохраняются сами, и OBS применяет их сразу: ссылку вставлять заново не нужно.</p>
 
   <div class="grid">
     <div class="card">
@@ -109,17 +109,39 @@
     return s ? `?${s}` : '';
   }
 
-  let previewTimer;
+  /** Заполняем форму сохранёнными настройками (строка вида "font=22&bg=dark"). */
+  function fillForm(query) {
+    const q = new URLSearchParams(query);
+    for (const [k, d] of Object.entries(defaults)) {
+      const input = form.elements[k];
+      const v = q.has(k) ? q.get(k) : d;
+      if (input.type === 'checkbox') input.checked = typeof v === 'boolean' ? v : !['0', 'false', 'no', 'off'].includes(v);
+      else if (input.tagName === 'SELECT' && ![...input.options].some((o) => o.value === v)) input.add(new Option(`#${v}`, v));
+      if (input.type !== 'checkbox') input.value = v;
+    }
+  }
+
+  // Настройки хранит relay: они переживают перезапуск, а оверлей в OBS подхватывает их сам,
+  // поэтому ссылку для OBS не нужно перевставлять после каждого изменения.
+  let saveTimer;
   function update() {
     // Ползунок фона имеет смысл только для непрозрачного фона.
     if (form.elements.bg.value === 'transparent' && document.activeElement === form.elements.bgalpha) form.elements.bg.value = 'dark';
     for (const out of form.querySelectorAll('output')) out.textContent = `${form.elements[out.dataset.for].value}%`;
-    urlInput.value = `${location.origin}/overlay${buildQuery()}`;
-    clearTimeout(previewTimer);
-    previewTimer = setTimeout(() => { preview.src = `/overlay${buildQuery({ status: '1' })}`; }, 250);
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      fetch('/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: buildQuery().slice(1) }) }).catch(() => {});
+    }, 250);
   }
-  form.addEventListener('input', update);
-  update();
+
+  (async () => {
+    try { fillForm((await (await fetch('/settings', { cache: 'no-store' })).json()).query || ''); } catch { /* relay не отвечает */ }
+    for (const out of form.querySelectorAll('output')) out.textContent = `${form.elements[out.dataset.for].value}%`;
+    urlInput.value = `${location.origin}/overlay`;
+    preview.src = '/overlay?status=1'; // превью само перезагружается после сохранения
+    form.addEventListener('input', update);
+  })();
 
   document.getElementById('copy').addEventListener('click', async () => {
     try { await navigator.clipboard.writeText(urlInput.value); } catch { urlInput.select(); document.execCommand('copy'); }

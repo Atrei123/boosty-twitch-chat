@@ -60,7 +60,9 @@
   #status { position: absolute; left: 10px; bottom: 10px; padding: 6px 10px; border-radius: 6px;
     background: rgba(0,0,0,.7); color: #fff; font: 500 13px/1.4 Inter, Arial, sans-serif; text-shadow: none; }
   #status[hidden] { display: none; }
-  @keyframes in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  /* Сдвиг вверх делает весь #chat (см. slideUp), строка только проявляется. */
+  #chat { will-change: transform; }
+  @keyframes in { from { opacity: 0; } to { opacity: 1; } }
   @keyframes out { to { opacity: 0; } }
 </style>
 </head>
@@ -68,8 +70,16 @@
 <div id="chat" aria-live="polite"></div>
 <div id="status" hidden></div>
 <script>
-(() => {
-  const q = new URLSearchParams(location.search);
+(async () => {
+  // Основа — настройки, сохранённые на странице настройки relay; параметры в адресе их перекрывают.
+  const q = new URLSearchParams();
+  let settingsLoaded = false;
+  try {
+    const s = await (await fetch('/settings', { cache: 'no-store' })).json();
+    for (const [k, v] of new URLSearchParams(s.query || '')) q.set(k, v);
+    settingsLoaded = true;
+  } catch { /* relay ещё не запущен — перечитаем, когда появится связь */ }
+  for (const [k, v] of new URLSearchParams(location.search)) q.set(k, v);
   const num = (k, d) => (q.has(k) && !Number.isNaN(+q.get(k)) ? +q.get(k) : d);
   const flag = (k, d) => (q.has(k) ? !['0', 'false', 'no', 'off'].includes(q.get(k)) : d);
   const opt = {
@@ -210,11 +220,62 @@
     const line = renderLine(m);
     if (initial) line.style.animation = 'none';
     chat.append(line);
+    if (!initial) slideUp(line);
     scheduleFade(line, m, initial);
     while (chat.children.length > opt.max) chat.firstElementChild.remove();
   }
 
+  /*
+   * Плавная прокрутка как в чате Twitch: новая строка встаёт снизу, весь столбец
+   * сдвигается вниз на её высоту и плавно уезжает обратно. Если предыдущий сдвиг
+   * ещё не закончился, продолжаем с текущего положения — без рывка.
+   */
+  function slideUp(line) {
+    const cs = getComputedStyle(line);
+    const h = line.getBoundingClientRect().height + (parseFloat(cs.marginTop) || 0);
+    if (!h) return;
+    const tf = getComputedStyle(chat).transform;
+    const cur = tf && tf !== 'none' ? new DOMMatrixReadOnly(tf).m42 : 0;
+    chat.style.transition = 'none';
+    chat.style.transform = `translateY(${cur + h}px)`;
+    void chat.offsetHeight; // зафиксировать стартовое положение
+    chat.style.transition = 'transform .28s ease-out';
+    chat.style.transform = 'translateY(0)';
+  }
+
+  /*
+   * Boosty часто отдаёт несколько сообщений разом. Выпускаем их по одному с короткой
+   * паузой, чтобы чат тёк, а не прыгал пачками. Чем длиннее очередь, тем короче пауза,
+   * чтобы оверлей не отставал от чата.
+   */
+  const queue = [];
+  let pumpTimer = 0;
+  function enqueue(m) {
+    queue.push(m);
+    if (!pumpTimer) pump();
+  }
+  function pump() {
+    pumpTimer = 0;
+    if (queue.length > 30) {
+      // Огромная пачка (например, relay переподключился): старое — сразу, без анимации.
+      for (const old of queue.splice(0, queue.length - 5)) add(old, true);
+    }
+    const m = queue.shift();
+    if (!m) return;
+    add(m, false);
+    // Пауза держится и при пустой очереди: следующее сообщение, пришедшее сразу, подождёт.
+    pumpTimer = setTimeout(pump, queue.length > 10 ? 70 : queue.length > 3 ? 130 : 220);
+  }
+  function dropQueue() {
+    queue.length = 0;
+    clearTimeout(pumpTimer);
+    pumpTimer = 0;
+  }
+
   function remove(id) {
+    const qi = queue.findIndex((m) => m.id === id);
+    if (qi >= 0 && !opt.deleted) queue.splice(qi, 1);
+    else if (qi >= 0) queue[qi] = { ...queue[qi], deleted: true };
     const line = chat.querySelector(`[data-id="${CSS.escape(id)}"]`);
     if (!line) return;
     if (opt.deleted) {
@@ -239,20 +300,32 @@
       let ev;
       try { ev = JSON.parse(e.data); } catch { return; }
       if (ev.type === 'replay') {
+        dropQueue();
         chat.textContent = '';
         for (const m of ev.messages || []) if (opt.history || !m.history) add(m, true);
       } else if (ev.type === 'message') {
-        if (opt.history || !ev.msg.history) add(ev.msg, false);
+        if (opt.history || !ev.msg.history) enqueue(ev.msg);
       } else if (ev.type === 'delete') {
         remove(ev.id);
       } else if (ev.type === 'clear') {
+        dropQueue();
         chat.textContent = '';
+      } else if (ev.type === 'settings') {
+        location.reload(); // настройки поменяли на странице relay — применяем без перезапуска OBS
       } else if (ev.type === 'status') {
         showStatus(ev.boostyConnected ? '' : 'Ждём чат Boosty: откройте страницу чата в браузере с расширением');
       }
     };
     es.onerror = () => showStatus('Нет связи с relay — запустите relay/start');
-    es.onopen = () => showStatus('');
+    es.onopen = () => {
+      // relay запустили позже оверлея — берём его настройки (перезагружаемся, только если они читаются,
+      // чтобы не уйти в бесконечную перезагрузку)
+      if (!settingsLoaded) {
+        fetch('/settings', { cache: 'no-store' }).then((r) => r.json()).then(() => location.reload(), () => {});
+        settingsLoaded = true;
+      }
+      showStatus('');
+    };
   }
   connect();
 })();

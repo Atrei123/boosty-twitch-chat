@@ -27,6 +27,22 @@ const clients = new Set();   // открытые SSE-соединения
 let lastPushAt = 0;
 let lastSource = '';
 
+// Настройки оверлея со страницы настройки. Хранятся рядом с server.js и переживают перезапуск.
+// Формат — строка параметров, как в адресе: "font=22&bg=dark".
+const SETTINGS_FILE = path.join(__dirname, 'settings.json');
+let savedQuery = '';
+try {
+  const s = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
+  if (typeof s.query === 'string') savedQuery = s.query;
+} catch { /* файла ещё нет — настройки по умолчанию */ }
+
+function saveSettings(query) {
+  savedQuery = query;
+  fs.writeFile(SETTINGS_FILE, JSON.stringify({ query }, null, 2), (err) => {
+    if (err) console.error('Не удалось сохранить настройки:', err.message);
+  });
+}
+
 const files = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/index.html': ['index.html', 'text/html; charset=utf-8'],
@@ -122,6 +138,32 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.method === 'GET' && url.pathname === '/status') return send(res, 200, status());
+
+  if (req.method === 'GET' && url.pathname === '/settings') return send(res, 200, { query: savedQuery });
+
+  if (req.method === 'POST' && url.pathname === '/settings') {
+    let body = '';
+    req.on('data', (c) => {
+      body += c;
+      if (body.length > 10000) req.destroy();
+    });
+    req.on('end', () => {
+      let query;
+      try {
+        query = JSON.parse(body || '{}').query;
+      } catch {
+        return send(res, 400, { ok: false, error: 'bad json' });
+      }
+      if (typeof query !== 'string' || query.length > 4000) return send(res, 400, { ok: false, error: 'bad query' });
+      query = new URLSearchParams(query).toString(); // нормализуем
+      if (query !== savedQuery) {
+        saveSettings(query);
+        broadcast({ type: 'settings' }); // открытые оверлеи (в том числе в OBS) перечитают настройки
+      }
+      send(res, 200, { ok: true });
+    });
+    return;
+  }
 
   if (req.method === 'GET' && files[url.pathname]) {
     const [file, type] = files[url.pathname];

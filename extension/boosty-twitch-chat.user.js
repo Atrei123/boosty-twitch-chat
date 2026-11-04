@@ -505,12 +505,36 @@
     let stick = true;
 
     const nearBottom = () => list.scrollHeight - list.clientHeight - list.scrollTop < 30;
-    const toBottom = () => { list.scrollTop = list.scrollHeight; };
+    let glideRaf = 0;
+    const stopGlide = () => { cancelAnimationFrame(glideRaf); glideRaf = 0; };
+    const toBottom = () => { stopGlide(); list.scrollTop = list.scrollHeight; };
+    // Плавно доезжаем до низа, как в чате Twitch: быстро в начале, мягко в конце.
+    // Пачка новых сообщений прокручивается одним плавным движением.
+    const glide = () => {
+      if (glideRaf) return;
+      let prev = performance.now();
+      const step = (now) => {
+        const dt = Math.min(64, now - prev);
+        prev = now;
+        const target = list.scrollHeight - list.clientHeight;
+        const d = target - list.scrollTop;
+        if (d <= 1) { list.scrollTop = target; glideRaf = 0; return; }
+        list.scrollTop += Math.max(1, d * (1 - Math.pow(0.82, dt / 16.7)));
+        glideRaf = requestAnimationFrame(step);
+      };
+      glideRaf = requestAnimationFrame(step);
+    };
+    // Пользователь крутит вверх — прекращаем доводку и ставим чат на паузу.
+    const userUp = () => { stopGlide(); stick = false; };
+    list.addEventListener('wheel', (e) => { if (e.deltaY < 0) userUp(); }, { passive: true });
+    list.addEventListener('keydown', (e) => { if (['ArrowUp', 'PageUp', 'Home'].includes(e.key)) userUp(); });
+    list.addEventListener('pointerdown', (e) => { if (e.target === list) userUp(); }); // тянут полосу прокрутки
     list.addEventListener('scroll', () => {
+      if (glideRaf) return; // это наша доводка, а не пользователь
       stick = nearBottom();
       if (stick) paused.hidden = true;
     }, { passive: true });
-    list.addEventListener('load', () => { if (stick) toBottom(); }, true);
+    list.addEventListener('load', () => { if (stick) glide(); }, true);
     paused.addEventListener('click', () => { stick = true; paused.hidden = true; toBottom(); });
 
     function rerenderAll() {
@@ -584,7 +608,7 @@
       root.hidden = !settings.view || !visible;
       restore.hidden = settings.view || !visible;
       Object.assign(restore.style, { left: `${r.left + r.width - 100}px`, top: `${Math.max(0, r.top) + 8}px` });
-      if (stick) toBottom();
+      if (stick && !glideRaf && list.scrollHeight - list.clientHeight - list.scrollTop > 1) glide();
     }
     window.addEventListener('resize', position);
     setInterval(position, 700);
@@ -596,7 +620,7 @@
         if (after) after.after(line);
         else if (ev.afterId === null) list.prepend(line);
         else list.append(line);
-        if (stick) toBottom();
+        if (stick) glide();
         else if (!ev.msg.history) paused.hidden = false;
       } else if (ev.type === 'delete' || ev.type === 'update') {
         const old = list.querySelector(`[data-id="${ev.id}"]`);
