@@ -39,9 +39,14 @@ boosty.to/…/only-chat  ──(расширение читает чат)──�
 
 ## Установка
 
+### 0. Скачать
+
+1. Откройте [последний релиз](https://github.com/Atrei123/boosty-twitch-chat/releases/latest) и скачайте `boosty-twitch-chat.zip` (или нажмите на этой странице зелёную кнопку **Code → Download ZIP**).
+2. Нажмите на архив правой кнопкой → **«Извлечь все…»**. Запускать файлы прямо из zip нельзя.
+
 ### 1. Relay
 
-1. Установите [Node.js](https://nodejs.org) (LTS).
+1. Установите [Node.js](https://nodejs.org/ru/download): скачайте **установщик Windows (.msi)**, запустите его и после установки перезагрузите компьютер.
 2. Запустите `relay/start.bat` на Windows или `relay/start.sh` на macOS / Linux.
 3. Откроется страница `http://127.0.0.1:8787/`. Окно relay не закрывайте, пока идёт стрим.
 
