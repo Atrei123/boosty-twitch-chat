@@ -15,6 +15,11 @@
   .ChatMessage-scss--module_tooltipHidden_UTMEu { display: none; }
   #chat-pub-root { height: 90px; border-top: 1px solid #ddd; padding: 10px; }
   #chat-pub-root textarea { width: 100%; height: 60px; }
+  .ChatPublisher-scss--module_actions_x { display: flex; justify-content: flex-end; gap: 6px; padding: 0 10px 8px; }
+  /* Как у Boosty: окно смайлов — портал в конце body, открывается над полем ввода, поверх списка. */
+  #smile-picker { position: fixed; right: 12px; bottom: 150px; width: 220px; height: 160px; z-index: 100;
+    background: #fff; border: 1px solid #ccc; box-shadow: 0 4px 16px rgba(0,0,0,.2); display: none; }
+  #smile-picker.open { display: grid; grid-template-columns: repeat(5, 1fr); }
 </style>
 </head>
 <body>
@@ -23,9 +28,23 @@
   <div class="ChatBoxBase-scss--module_list_x" data-test-id="CHAT:messages" id="list">
     <div class="ChatSystemMessage-scss--module_root_Fjn2U ChatBoxBase-scss--module_infoMessage_8xB2v">Добро пожаловать в чат!</div>
   </div>
-  <div id="chat-pub-root"><textarea placeholder="Написать сообщение"></textarea></div>
+  <div class="ChatPublisher-scss--module_root_x">
+    <div id="chat-pub-root"><textarea placeholder="Написать сообщение"></textarea></div>
+    <div class="ChatPublisher-scss--module_actions_x">
+      <button type="button" id="smile-btn" data-test-id="SMILES:button">😀</button>
+      <button type="button" id="send-btn" data-test-id="COMMON_PUBLISHER:SEND">Отправить</button>
+    </div>
+  </div>
 </div>
+<div id="smile-picker" data-test-id="SMILES:picker"><button type="button" class="smile">❤️</button><button type="button" class="smile">🔥</button></div>
 <script>
+  document.getElementById('smile-btn').onclick = () => document.getElementById('smile-picker').classList.toggle('open');
+  document.querySelectorAll('#smile-picker .smile').forEach((b) => { b.onclick = () => { document.querySelector('#chat-pub-root textarea').value += b.textContent; }; });
+  document.getElementById('send-btn').onclick = () => {
+    const ta = document.querySelector('#chat-pub-root textarea');
+    if (ta.value.trim()) addMsg({ name: 'Я', html: ta.value.replace(/</g, '&lt;'), time: '17:30' });
+    ta.value = '';
+  };
   const list = document.getElementById('list');
   const EMOJI = 'https://static.boosty.to/assets/images/small.heart.png';
   const roleIcon = { streamer: '#icon-star-4f3444cf', moderator: '#icon-sword-b9560ef8' };

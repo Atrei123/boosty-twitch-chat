@@ -38,6 +38,8 @@ const assert = (cond, msg) => { if (!cond) throw new Error(`FAIL: ${msg}`); cons
     await overlay.goto('http://127.0.0.1:8787/overlay?time=1&bg=dark');
 
     const page = await ctx.newPage();
+    // Twitch-вид по умолчанию выключен — здесь проверяем его, поэтому включаем.
+    await page.addInitScript(() => localStorage.setItem('boosty-twitch-chat:v1', JSON.stringify({ view: true, layout: 2 })));
     const logs = [];
     page.on('console', (m) => logs.push(m.text()));
     await page.goto(BOOSTY_URL);

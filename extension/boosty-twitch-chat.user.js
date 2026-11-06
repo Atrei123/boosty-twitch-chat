@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Boosty Chat — Twitch-style
 // @namespace    boosty-twitch-chat
-// @version      1.0.0
+// @version      1.1.0
 // @description  Чат Boosty в стиле Twitch + передача сообщений в OBS-оверлей через локальный relay
 // @match        https://boosty.to/*
 // @run-at       document-idle
@@ -30,8 +30,9 @@
 
   // ---------------------------------------------------------------- settings
   const STORE_KEY = 'boosty-twitch-chat:v1';
+  const LAYOUT = 2;        // версия настроек: со 2-й Twitch-вид по умолчанию выключен
   const DEFAULTS = {
-    view: true,            // показывать Twitch-вид поверх чата Boosty
+    view: false,           // Twitch-вид поверх чата Boosty (включается кнопкой или Alt+B)
     fontSize: 14,
     timestamps: true,
     avatars: false,
@@ -42,7 +43,10 @@
 
   function loadSettings() {
     try {
-      return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(STORE_KEY) || '{}') };
+      const stored = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
+      // В 1-й версии Twitch-вид включался сам и мешал пользоваться чатом Boosty.
+      if (stored.layout !== LAYOUT) delete stored.view;
+      return { ...DEFAULTS, ...stored, layout: LAYOUT };
     } catch {
       return { ...DEFAULTS };
     }
@@ -239,15 +243,20 @@
     for (const node of nodes) {
       if (uiHost && uiHost.contains(node)) continue;
       const known = nodeInfo.get(node);
-      const msg = parseMessage(node);
-      if (msg.kind === 'chat' && !msg.name && !msg.parts.length) continue; // ещё не дорендерилось
-      const sig = signature(msg);
+      const raw = node.textContent;
+      const cls = String(node.className);
+      // Узел не менялся с прошлого прохода — разбирать его заново незачем.
+      const unchanged = Boolean(known && known.raw === raw && known.cls === cls);
+      const msg = unchanged ? { deleted: known.deleted } : parseMessage(node);
+      if (!unchanged && msg.kind === 'chat' && !msg.name && !msg.parts.length) continue; // ещё не дорендерилось
+      const sig = unchanged ? known.sig : signature(msg);
+      const info = { sig, raw, cls, deleted: msg.deleted };
 
       let rec = null;
       if (known && known.sig === sig && !claimed.has(known.id)) rec = messages.find((r) => r.id === known.id) || null;
       if (!rec) rec = findKnown(sig, prevId, claimed);
       if (rec) {
-        nodeInfo.set(node, { id: rec.id, sig });
+        nodeInfo.set(node, { id: rec.id, ...info });
         claimed.add(rec.id);
         if (Boolean(rec.deleted) !== msg.deleted) {
           rec.deleted = msg.deleted;
@@ -258,8 +267,9 @@
       }
 
       // Новое сообщение.
+      if (unchanged) continue; // запись давно вытеснена из памяти — не показываем её заново
       const id = `${sessionPrefix}-${++seq}`;
-      nodeInfo.set(node, { id, sig });
+      nodeInfo.set(node, { id, ...info });
       claimed.add(id);
       if (!sigIds.has(sig)) sigIds.set(sig, []);
       sigIds.get(sig).push(id);
@@ -386,7 +396,7 @@
     :host { all: initial; }
     * { box-sizing: border-box; }
     .root {
-      position: fixed; z-index: 2147483000; display: flex; flex-direction: column;
+      position: fixed; z-index: 50; display: flex; flex-direction: column;
       background: #18181b; color: #efeff1; overflow: hidden;
       font: 400 var(--fs)/1.43 Inter, Roobert, "Helvetica Neue", Helvetica, Arial, sans-serif;
       -webkit-font-smoothing: antialiased;
@@ -427,7 +437,10 @@
     .bar button.on { background: #9147ff; }
     .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 5px; vertical-align: 0; background: #adadb8; }
     .dot.ok { background: #00f593; } .dot.offline { background: #eb0400; }
-    .restore { position: fixed; z-index: 2147483000; background: #9147ff; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+    .restore { position: fixed; z-index: 50; background: #9147ff; box-shadow: 0 2px 8px rgba(0,0,0,.4);
+      opacity: .55; transition: opacity .15s; }
+    .restore:hover, .restore:focus-visible { opacity: 1; }
+    .root.yield { visibility: hidden; }
     .restore[hidden] { display: none; }
   `;
 
@@ -613,6 +626,36 @@
       }
     });
 
+    /*
+     * Если поверх области сообщений Boosty открыл своё окно (смайлы, меню
+     * модерации, профиль), прячем Twitch-вид, пока окно открыто: всё, что Boosty
+     * рисует поверх своего чата, должно оставаться видимым и кликабельным.
+     */
+    function boostyPopupOver(r) {
+      if (!r.width || !r.height) return false;
+      const listEl = document.querySelector(SEL.chatList) || document.querySelector(SEL.chatRoot);
+      const isChatLayer = (e) => e === document.body || e === document.documentElement ||
+        (listEl && (listEl.contains(e) || e.contains(listEl))) || Boolean(e.closest(ANY_MESSAGE));
+      for (const fx of [0.12, 0.5, 0.88]) {
+        for (const fy of [0.08, 0.3, 0.55, 0.8, 0.96]) {
+          for (const e of document.elementsFromPoint(r.left + r.width * fx, r.top + r.height * fy)) {
+            if (e === uiHost) continue;
+            if (isChatLayer(e)) break; // дошли до самого чата — дальше только его подложка
+            const b = e.getBoundingClientRect();
+            if (b.width > 60 && b.height > 40) return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    let positionQueued = false;
+    function schedulePosition() {
+      if (positionQueued) return;
+      positionQueued = true;
+      requestAnimationFrame(() => { positionQueued = false; position(); });
+    }
+
     /** Встаём ровно поверх списка сообщений Boosty, не закрывая поле ввода. */
     function position() {
       const chat = document.querySelector(SEL.chatRoot);
@@ -639,6 +682,10 @@
       });
       root.hidden = !settings.view || !visible;
       restore.hidden = settings.view || !visible;
+      if (!root.hidden) {
+        root.classList.remove('yield');
+        root.classList.toggle('yield', boostyPopupOver(root.getBoundingClientRect()));
+      }
       Object.assign(restore.style, { left: `${r.left + r.width - 100}px`, top: `${Math.max(0, r.top) + 8}px` });
       if (stick && !glideRaf && list.scrollHeight - list.clientHeight - list.scrollTop > 1) glide();
     }
@@ -663,7 +710,7 @@
       }
     });
 
-    ui = { updateStatus, position };
+    ui = { updateStatus, position, schedulePosition };
     applySettings();
     rerenderAll();
   }
@@ -673,8 +720,11 @@
     createUI();
     scan(true);
     new MutationObserver((records) => {
+      if (ui && settings.view) ui.schedulePosition(); // могло открыться окно Boosty
       for (const r of records) {
         if (uiHost && (r.target === uiHost || uiHost.contains(r.target))) continue;
+        const el = r.target.nodeType === Node.ELEMENT_NODE ? r.target : r.target.parentElement;
+        if (el && el.closest(SEL.publisher)) continue; // это набор текста, а не новые сообщения
         scheduleScan();
         return;
       }
