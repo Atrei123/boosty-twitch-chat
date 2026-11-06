@@ -1,0 +1,16 @@
+{
+  "name": "boosty-twitch-chat",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Чат Boosty в стиле Twitch + оверлей для OBS. Работает только на вашем компьютере.",
+  "license": "MIT",
+  "repository": "github:Atrei123/boosty-twitch-chat",
+  "scripts": {
+    "test": "npm run test:relay && npm run test:browser",
+    "test:relay": "node test/relay-smoke.js",
+    "test:browser": "node test/e2e.js && node test/boosty-usable.js"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

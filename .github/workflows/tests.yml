@@ -1,0 +1,53 @@
+# Автопроверка: на каждый push и pull request запускает тесты проекта.
+#  - relay: программа для OBS на Node.js 18 и 22 (без браузера и зависимостей);
+#  - browser: настоящее расширение в Chromium на копии страницы чата Boosty —
+#    сообщения доходят до оверлея, а чат Boosty остаётся рабочим
+#    (смайлы, кнопка «Отправить»).
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  relay:
+    name: Relay (Node.js ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18.x, 22.x]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: Синтаксис всех скриптов
+        run: for f in extension/*.js relay/*.js test/*.js; do node --check "$f"; done
+      - name: Тест relay
+        run: npm run test:relay
+
+  browser:
+    name: Расширение в Chromium
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+      - run: npm ci
+      - name: Установить Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Тесты в браузере
+        run: npm run test:browser
+      - name: Скриншоты (если тест упал)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: test/out/
+          if-no-files-found: ignore

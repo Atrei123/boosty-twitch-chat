@@ -1,5 +1,7 @@
 # Boosty Chat - Twitch-style
 
+[![Tests](https://github.com/Atrei123/boosty-twitch-chat/actions/workflows/tests.yml/badge.svg)](https://github.com/Atrei123/boosty-twitch-chat/actions/workflows/tests.yml)
+
 Делает чат Boosty похожим на чат Twitch и выводит его в OBS как обычный оверлей.
 
 Состоит из двух частей:
@@ -118,10 +120,20 @@ boosty.to/…/only-chat  ──(расширение читает чат)──�
 
 ## Проверка
 
-`test/e2e.js` запускает настоящее расширение в Chromium на копии страницы чата Boosty (по реальной разметке), поднимает relay, открывает оверлей и проверяет сообщения, значки, смайлы, ответы, удаление и перезапуск оверлея:
+Тесты автоматически запускаются на GitHub при каждом изменении: значок **Tests** вверху показывает результат последней проверки, а подробности видны во вкладке [Actions](https://github.com/Atrei123/boosty-twitch-chat/actions).
+
+- `test/relay-smoke.js`: программа для OBS запускается, слушает только `127.0.0.1`, принимает сообщения, не дублирует их и передаёт удаление. Без браузера и зависимостей, проверяется на Node.js 18 и 22.
+- `test/e2e.js`: настоящее расширение в Chromium на копии страницы чата Boosty (по реальной разметке). Проверяет сообщения, значки, смайлы, ответы, удаление и перезапуск оверлея.
+- `test/boosty-usable.js`: чат Boosty остаётся рабочим у того, у кого стоит расширение. Тест мышью открывает окно смайлов, выбирает смайл и нажимает «Отправить» в обычном виде и в Twitch-виде.
+
+Запустить у себя:
 
 ```bash
-npm i -D playwright && npx playwright install chromium
-node test/e2e.js
-node test/boosty-usable.js   # чат Boosty остаётся рабочим: смайлы, «Отправить», сообщения
+npm install
+```
+```bash
+npx playwright install chromium
+```
+```bash
+npm test
 ```
